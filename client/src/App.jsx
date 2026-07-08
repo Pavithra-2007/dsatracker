@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard';
 import Problems from './pages/Problems';
 import Topics from './pages/Topics';
 import Revision from './pages/Revision';
+import Analytics from './pages/Analytics';
 
 const ComingSoon = ({ title }) => (
   <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
@@ -50,7 +51,7 @@ const App = () => {
             <ProtectedRoute><Revision /></ProtectedRoute>
           } />
           <Route path="/analytics" element={
-            <ProtectedRoute><ComingSoon title="Analytics" /></ProtectedRoute>
+            <ProtectedRoute><Analytics /></ProtectedRoute>
           } />
           <Route path="/companies" element={
             <ProtectedRoute><ComingSoon title="Companies" /></ProtectedRoute>
