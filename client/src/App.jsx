@@ -6,6 +6,7 @@ import Login from './pages/Auth/Login';
 import Register from './pages/Auth/Register';
 import Dashboard from './pages/Dashboard';
 import Problems from './pages/Problems';
+import Topics from './pages/Topics';
 
 const ComingSoon = ({ title }) => (
   <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
@@ -42,7 +43,7 @@ const App = () => {
             <ProtectedRoute><Problems /></ProtectedRoute>
           } />
           <Route path="/topics" element={
-            <ProtectedRoute><ComingSoon title="Topics" /></ProtectedRoute>
+            <ProtectedRoute><Topics/></ProtectedRoute>
           } />
           <Route path="/revision" element={
             <ProtectedRoute><ComingSoon title="Revision" /></ProtectedRoute>
