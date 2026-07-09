@@ -235,7 +235,7 @@ const Companies = () => {
                           }
                         />
                         {p.problemLink && (
-                          
+                          <a
                             href={p.problemLink}
                             target="_blank"
                             rel="noreferrer"
