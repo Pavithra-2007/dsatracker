@@ -6,7 +6,63 @@ import goalService from '../services/goalService';
 import authService from '../services/authService';
 import toast from 'react-hot-toast';
 import { useEffect } from 'react';
+const CodingProfiles = ({ user, updateUser }) => {
+  const [form, setForm] = useState({
+    leetcode:   user?.codingProfiles?.leetcode   || '',
+    gfg:        user?.codingProfiles?.gfg        || '',
+    codeforces: user?.codingProfiles?.codeforces || '',
+    hackerrank: user?.codingProfiles?.hackerrank || '',
+  });
+  const [saving, setSaving] = useState(false);
 
+  const fields = [
+    { key: 'leetcode',   label: 'LeetCode',   placeholder: 'your-username',      icon: '🟡' },
+    { key: 'gfg',        label: 'GeeksforGeeks', placeholder: 'your_username',   icon: '🟢' },
+    { key: 'codeforces', label: 'Codeforces', placeholder: 'handle',             icon: '🔵' },
+    { key: 'hackerrank', label: 'HackerRank', placeholder: 'your-username',      icon: '🟢' },
+  ];
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await authService.updateProfile({ codingProfiles: form });
+      updateUser(res.data);
+      toast.success('Coding profiles saved!');
+    } catch {
+      toast.error('Failed to save profiles');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      {fields.map(({ key, label, placeholder, icon }) => (
+        <div key={key}>
+          <label className="block text-xs text-gray-400 mb-1">
+            {icon} {label}
+          </label>
+          <input
+            value={form[key]}
+            onChange={(e) => setForm((p) => ({ ...p, [key]: e.target.value }))}
+            placeholder={placeholder}
+            className="w-full bg-gray-800 border border-gray-700 text-white
+                       rounded-xl px-4 py-2.5 text-sm placeholder-gray-500
+                       focus:outline-none focus:border-violet-500 transition"
+          />
+        </div>
+      ))}
+      <button
+        onClick={handleSave}
+        disabled={saving}
+        className="w-full bg-violet-600 hover:bg-violet-700 disabled:opacity-50
+                   text-white text-sm font-semibold py-2.5 rounded-xl transition mt-2"
+      >
+        {saving ? 'Saving...' : 'Save Profiles'}
+      </button>
+    </div>
+  );
+};
 const Profile = () => {
   const { user, updateUser } = useAuth();
   const [goals, setGoals] = useState([]);
@@ -360,6 +416,14 @@ const Profile = () => {
           </div>
 
         </div>
+        {/* Coding Profiles */}
+<div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+  <h3 className="text-white font-semibold mb-4">🖥️ Coding Profiles</h3>
+  <p className="text-gray-500 text-xs mb-4">
+    Save your handles so we can auto-link your profiles in future.
+  </p>
+  <CodingProfiles user={user} updateUser={updateUser} />
+</div>
       </div>
     </DashboardLayout>
   );

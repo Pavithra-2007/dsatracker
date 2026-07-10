@@ -15,6 +15,16 @@ const problemSchema = new mongoose.Schema(
       trim: true,
       maxlength: [200, 'Title cannot exceed 200 characters'],
     },
+    slug: {
+  type: String,
+  default: '',
+  trim: true,
+},
+problemId: {
+  type: String,
+  default: '',
+  trim: true,
+},
     platform: {
       type: String,
       enum: PLATFORMS,

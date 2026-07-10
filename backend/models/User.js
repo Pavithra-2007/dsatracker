@@ -37,6 +37,12 @@ const userSchema = new mongoose.Schema(
       monthlyGoal: { type: Number, default: 60 },
       theme: { type: String, enum: ['dark', 'light'], default: 'dark' },
     },
+    codingProfiles: {
+      leetcode: { type: String, default: '' },
+      gfg: { type: String, default: '' },
+      codeforces: { type: String, default: '' },
+      hackerrank: { type: String, default: '' },
+    },
   },
   { timestamps: true }
 );

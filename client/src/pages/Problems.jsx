@@ -7,7 +7,7 @@ import Badge from '../components/ui/Badge';
 import problemService from '../services/problemService';
 import { DIFFICULTY_COLORS, STATUS_COLORS } from '../constants';
 import toast from 'react-hot-toast';
-
+import AddProblemModal from '../components/problems/AddProblemModal';
 const defaultFilters = {
   search: '', topic: '', difficulty: '',
   status: '', platform: '', company: '', isFavorite: '',
@@ -24,7 +24,7 @@ const Problems = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedProblem, setSelectedProblem] = useState(null);
-
+const [showAutoModal, setShowAutoModal] = useState(false);
   const fetchProblems = useCallback(async (page = 1) => {
     setLoading(true);
     try {
@@ -107,14 +107,23 @@ const Problems = () => {
             {pagination.total} problems total
           </p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700
-                     text-white font-semibold px-4 py-2.5 rounded-xl transition"
-        >
-          <span className="text-lg">+</span>
-          Add Problem
-        </button>
+        <div className="flex gap-2">
+  <button
+    onClick={() => setShowAutoModal(true)}
+    className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700
+               text-white font-semibold px-4 py-2.5 rounded-xl transition"
+  >
+    <span>⚡</span> Add Problem
+  </button>
+  <button
+    onClick={() => setShowAddModal(true)}
+    className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 border
+               border-gray-700 text-gray-300 font-medium px-4 py-2.5 rounded-xl transition"
+    title="Add manually"
+  >
+    ✏️ Manual
+  </button>
+</div>
       </div>
 
       {/* Filters */}
@@ -420,7 +429,11 @@ const Problems = () => {
           </div>
         )}
       </Modal>
-
+<AddProblemModal
+  isOpen={showAutoModal}
+  onClose={() => setShowAutoModal(false)}
+  onSaved={() => fetchProblems(1)}
+/>
     </DashboardLayout>
   );
 };
