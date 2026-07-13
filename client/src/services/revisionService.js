@@ -6,6 +6,11 @@ const revisionService = {
     return res.data;
   },
 
+  getAllRevisions: async () => {
+    const res = await api.get('/revision/all');
+    return res.data;
+  },
+
   markRevised: async (id) => {
     const res = await api.put(`/revision/${id}/mark`);
     return res.data;

@@ -17,6 +17,7 @@ const goalRoutes = require('./routes/goalRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
 const contestRoutes = require('./routes/contestRoutes');
 const fetchRoutes = require('./routes/fetchRoutes');
+const syncRoutes = require('./routes/syncRoutes');
 const app = express();
 
 connectDB();
@@ -67,6 +68,7 @@ app.use('/api/goals', goalRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/contests', contestRoutes);
 app.use('/api/fetch', fetchRoutes);
+app.use('/api/sync', syncRoutes);
 app.use((req, res) => {
   res.status(404).json({
     success: false,

@@ -38,11 +38,27 @@ const userSchema = new mongoose.Schema(
       theme: { type: String, enum: ['dark', 'light'], default: 'dark' },
     },
     codingProfiles: {
-      leetcode: { type: String, default: '' },
-      gfg: { type: String, default: '' },
-      codeforces: { type: String, default: '' },
-      hackerrank: { type: String, default: '' },
-    },
+  leetcode: {
+    username: { type: String, default: '' },
+    url:      { type: String, default: '' },
+  },
+  hackerrank: {
+    username: { type: String, default: '' },
+    url:      { type: String, default: '' },
+  },
+  gfg: {
+    username: { type: String, default: '' },
+    url:      { type: String, default: '' },
+  },
+  codeforces: {
+    username: { type: String, default: '' },
+    url:      { type: String, default: '' },
+  },
+  github: {
+    username: { type: String, default: '' },
+    url:      { type: String, default: '' },
+  },
+},
   },
   { timestamps: true }
 );
