@@ -198,5 +198,58 @@ const fetchSolvedProblems = async (username) => {
 
   return results;
 };
+/**
+ * Fetch LeetCode contest history for a user.
+ */
+const fetchContestHistory = async (username) => {
+  const data = await safeFetch({
+    query: `
+      query userContestRankingInfo($username: String!) {
+        userContestRanking(username: $username) {
+          attendedContestsCount
+          rating
+          globalRanking
+          totalParticipants
+          topPercentage
+        }
+        userContestRankingHistory(username: $username) {
+          attended
+          trendDirection
+          problemsSolved
+          totalProblems
+          finishTimeInSeconds
+          rating
+          ranking
+          contest {
+            title
+            startTime
+          }
+        }
+      }
+    `,
+    variables: { username },
+  });
 
-module.exports = { fetchSolvedProblems, verifyUser };
+  const history = data?.data?.userContestRankingHistory || [];
+  const ranking = data?.data?.userContestRanking || null;
+
+  // Only return contests user actually attended
+  const attended = history.filter((c) => c.attended);
+
+  return {
+    ranking,
+    contests: attended.map((c) => ({
+      name:          c.contest.title,
+      platform:      'LeetCode',
+      date:          new Date(c.contest.startTime * 1000),
+      rank:          c.ranking,
+      solved:        c.problemsSolved,
+      totalProblems: c.totalProblems,
+      ratingAfter:   Math.round(c.rating),
+      ratingChange:  0, // calculated below
+      finishTime:    c.finishTimeInSeconds,
+    })),
+  };
+};
+
+module.exports = { fetchSolvedProblems, verifyUser, fetchContestHistory };

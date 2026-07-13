@@ -1,4 +1,4 @@
-const { fetchSolvedProblems } = require('../services/platforms/leetcodeSync');
+const { fetchSolvedProblems, fetchContestHistory } = require('../services/platforms/leetcodeSync');
 const { generateRevisionSchedule } = require('../services/revisionService');
 const { updateStreak } = require('../services/streakService');
 
@@ -162,4 +162,88 @@ const syncLeetCode = async (req, res, next) => {
   }
 };
 
-module.exports = { syncLeetCode };
+const Contest = require('../models/Contest');
+
+/**
+ * POST /api/sync/leetcode/contests
+ * Sync contest history from LeetCode.
+ */
+const syncContests = async (req, res, next) => {
+  try {
+    const userId = req.user._id;
+
+    let { username } = req.body;
+
+    if (!username || !username.trim()) {
+      const user = await User.findById(userId);
+      username = user?.codingProfiles?.leetcode?.username;
+    }
+
+    if (!username || !username.trim()) {
+      return errorResponse(res, 'LeetCode username is required.', 400);
+    }
+
+    const syncStart = new Date();
+
+    // Fetch contest history from LeetCode
+    const { contests: fetched, ranking } = await fetchContestHistory(username.trim());
+
+    if (fetched.length === 0) {
+      return successResponse(res, {
+        imported: 0, skipped: 0, total: 0,
+        syncTime: new Date() - syncStart,
+      }, 'No contests found on LeetCode');
+    }
+
+    // Get existing contest names to avoid duplicates
+    const existing = await Contest.find(
+      { user: userId, platform: 'LeetCode' },
+      { name: 1 }
+    ).lean();
+
+    const existingNames = new Set(existing.map((c) => c.name));
+
+    const newContests = fetched.filter((c) => !existingNames.has(c.name));
+    const skipped = fetched.length - newContests.length;
+
+    // Calculate rating changes between consecutive contests
+    const sorted = [...newContests].sort((a, b) => new Date(a.date) - new Date(b.date));
+    for (let i = 1; i < sorted.length; i++) {
+      sorted[i].ratingChange = Math.round(sorted[i].ratingAfter - sorted[i - 1].ratingAfter);
+    }
+
+    // Save new contests
+    const saved = [];
+    for (const c of sorted) {
+      try {
+        const contest = await Contest.create({ ...c, user: userId });
+        saved.push(contest);
+      } catch {
+        continue;
+      }
+    }
+
+    return successResponse(res, {
+      imported:  saved.length,
+      skipped,
+      total:     fetched.length,
+      syncTime:  new Date() - syncStart,
+      username,
+      ranking,
+      contests:  saved.map((c) => ({
+        name:        c.name,
+        rank:        c.rank,
+        ratingAfter: c.ratingAfter,
+        date:        c.date,
+      })),
+    }, `Synced ${saved.length} contests from LeetCode!`);
+
+  } catch (error) {
+    if (error.message.includes('not found') || error.message.includes('required')) {
+      return errorResponse(res, error.message, 400);
+    }
+    next(error);
+  }
+};
+
+module.exports = { syncLeetCode, syncContests };

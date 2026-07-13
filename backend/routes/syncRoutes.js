@@ -1,11 +1,12 @@
 const express = require('express');
-const router = express.Router();
+const router  = express.Router();
 
-const { syncLeetCode } = require('../controllers/syncController');
+const { syncLeetCode, syncContests } = require('../controllers/syncController');
 const { protect } = require('../middleware/auth');
 
 router.use(protect);
 
-router.post('/leetcode', syncLeetCode);
+router.post('/leetcode',          syncLeetCode);
+router.post('/leetcode/contests', syncContests);
 
 module.exports = router;
