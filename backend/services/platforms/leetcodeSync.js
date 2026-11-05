@@ -4,22 +4,23 @@ const LEETCODE_GRAPHQL = 'https://leetcode.com/graphql';
  * Browser-like headers required by LeetCode.
  * Without User-Agent, LeetCode returns HTML instead of JSON → 500 crash.
  */
-const getHeaders = () => ({
+const getHeaders = (sessionCookie) => ({
   'Content-Type':   'application/json',
   'User-Agent':     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   'Referer':        'https://leetcode.com',
   'Origin':         'https://leetcode.com',
   'Accept':         'application/json, text/plain, */*',
   'Accept-Language':'en-US,en;q=0.9',
+  ...(sessionCookie ? { Cookie: `LEETCODE_SESSION=${sessionCookie}` } : {}),
 });
 
 /**
  * Safe fetch — handles HTML error pages from LeetCode gracefully.
  */
-const safeFetch = async (body) => {
+const safeFetch = async (body, sessionCookie) => {
   const res = await fetch(LEETCODE_GRAPHQL, {
     method:  'POST',
-    headers: getHeaders(),
+    headers: getHeaders(sessionCookie),
     body:    JSON.stringify(body),
   });
 
@@ -65,138 +66,113 @@ const verifyUser = async (username) => {
   return data.data.matchedUser;
 };
 
-/**
- * Fetch last 20 accepted submissions for a user.
- */
-const fetchRecentAccepted = async (username) => {
-  const data = await safeFetch({
-    query: `
-      query recentAcSubmissions($username: String!, $limit: Int!) {
-        recentAcSubmissionList(username: $username, limit: $limit) {
-          id
-          title
-          titleSlug
-          timestamp
-        }
-      }
-    `,
-    variables: { username, limit: 20 },
-  });
+const LEETCODE_PAGE_SIZE = 100;
 
-  return data?.data?.recentAcSubmissionList || [];
+/** Fetch every accepted question using LeetCode's paginated solved-problem list. */
+const verifySessionUser = async (username, sessionCookie) => {
+  const data = await safeFetch({
+    query: '{ userStatus { isSignedIn username } }',
+  }, sessionCookie);
+  const signedInUser = data?.data?.userStatus;
+  if (!signedInUser?.isSignedIn || signedInUser.username?.toLowerCase() !== username.toLowerCase()) {
+    throw new Error('The LeetCode session is invalid or belongs to a different username.');
+  }
 };
 
-/**
- * Fetch full problem details by slug.
- */
-const fetchProblemBySlug = async (slug) => {
-  const data = await safeFetch({
-    query: `
-      query questionData($titleSlug: String!) {
-        question(titleSlug: $titleSlug) {
-          questionFrontendId
-          title
-          titleSlug
-          difficulty
-          topicTags { name }
-          isPaidOnly
+const fetchAllAcceptedQuestions = async (sessionCookie) => {
+  const questions = [];
+  let total = Infinity;
+
+  while (questions.length < total) {
+    const skip = questions.length;
+    const data = await safeFetch({
+      query: `
+        query userProfileQuestions(
+          $status: StatusFilterEnum!
+          $skip: Int!
+          $first: Int!
+          $sortField: SortFieldEnum!
+          $sortOrder: SortingOrderEnum!
+          $keyword: String
+          $difficulty: [DifficultyEnum!]
+        ) {
+          userProfileQuestions(
+            status: $status
+            skip: $skip
+            first: $first
+            sortField: $sortField
+            sortOrder: $sortOrder
+            keyword: $keyword
+            difficulty: $difficulty
+          ) {
+            totalNum
+            questions {
+              frontendId
+              titleSlug
+              title
+              translatedTitle
+              difficulty
+            }
+          }
         }
-      }
-    `,
-    variables: { titleSlug: slug },
-  });
+      `,
+      variables: {
+        status: 'ACCEPTED',
+        skip,
+        first: LEETCODE_PAGE_SIZE,
+        sortField: 'LAST_SUBMITTED_AT',
+        sortOrder: 'DESCENDING',
+        keyword: null,
+        difficulty: [],
+      },
+    }, sessionCookie);
 
-  return data?.data?.question || null;
-};
+    const page = data?.data?.userProfileQuestions;
+    if (!page || !Array.isArray(page.questions)) {
+      const message = data?.errors?.[0]?.message || 'LeetCode returned an invalid solved-problem list';
+      throw new Error(message);
+    }
 
-/**
- * Map LeetCode tags to our topic enum.
- */
-const mapTopic = (topicTags = []) => {
-  const TAG_MAP = {
-    'Array':                  'Arrays',
-    'String':                 'Strings',
-    'Linked List':            'Linked List',
-    'Stack':                  'Stack',
-    'Queue':                  'Queue',
-    'Tree':                   'Trees',
-    'Binary Tree':            'Trees',
-    'Binary Search Tree':     'BST',
-    'Heap (Priority Queue)':  'Heap',
-    'Trie':                   'Trie',
-    'Graph':                  'Graph',
-    'Depth-First Search':     'DFS',
-    'Breadth-First Search':   'BFS',
-    'Backtracking':           'Backtracking',
-    'Greedy':                 'Greedy',
-    'Dynamic Programming':    'Dynamic Programming',
-    'Recursion':              'Recursion',
-    'Bit Manipulation':       'Bit Manipulation',
-    'Sliding Window':         'Sliding Window',
-    'Binary Search':          'Binary Search',
-    'Math':                   'Math',
-    'Sorting':                'Sorting',
-    'Hash Table':             'Hashing',
-    'Prefix Sum':             'Prefix Sum',
-    'Two Pointers':           'Arrays',
-    'Matrix':                 'Arrays',
-  };
-
-  for (const tag of topicTags) {
-    if (TAG_MAP[tag.name]) return TAG_MAP[tag.name];
+    total = Number(page.totalNum) || 0;
+    if (page.questions.length === 0) break;
+    questions.push(...page.questions);
   }
 
-  return 'Arrays';
+  return questions;
 };
 
 /**
- * Main function — fetch all recently solved problems for a username.
+ * Main function — fetch every accepted problem for a username.
  */
-const fetchSolvedProblems = async (username) => {
+const fetchSolvedProblems = async (username, sessionCookie) => {
   if (!username?.trim()) {
     throw new Error('LeetCode username is required');
+  }
+  if (!sessionCookie?.trim()) {
+    throw new Error('A LeetCode session cookie is required to import all solved problems.');
   }
 
   // Step 1 — verify user exists
   await verifyUser(username);
+  await verifySessionUser(username.trim(), sessionCookie.trim());
 
-  // Step 2 — get recent accepted submissions
-  const submissions = await fetchRecentAccepted(username);
+  const questions = await fetchAllAcceptedQuestions(sessionCookie.trim());
+  const uniqueQuestions = new Map(
+    questions
+      .filter((question) => question.titleSlug && question.frontendId)
+      .map((question) => [question.titleSlug, question])
+  );
 
-  if (submissions.length === 0) return [];
-
-  // Step 3 — deduplicate slugs
-  const uniqueSlugs = [...new Set(submissions.map((s) => s.titleSlug))];
-
-  // Step 4 — fetch details for each slug
-  const results = [];
-
-  for (const slug of uniqueSlugs) {
-    try {
-      const q = await fetchProblemBySlug(slug);
-
-      if (q && !q.isPaidOnly) {
-        results.push({
-          platform:  'LeetCode',
-          problemId: String(q.questionFrontendId),
-          slug:      q.titleSlug,
-          title:     q.title,
-          difficulty: q.difficulty,
-          topic:     mapTopic(q.topicTags),
-          topics:    q.topicTags.map((t) => t.name),
-          url:       `https://leetcode.com/problems/${q.titleSlug}/`,
-        });
-      }
-
-      // Delay to avoid rate limiting
-      await new Promise((r) => setTimeout(r, 150));
-    } catch (err) {
-      console.warn(`Skipped slug "${slug}":`, err.message);
-      continue;
-    }
-  }
-
-  return results;
+  return [...uniqueQuestions.values()].map((question) => ({
+    platform: 'LeetCode',
+    problemId: String(question.frontendId),
+    slug: question.titleSlug,
+    title: question.translatedTitle || question.title,
+    difficulty: String(question.difficulty).charAt(0).toUpperCase()
+      + String(question.difficulty).slice(1).toLowerCase(),
+    topic: 'Arrays',
+    url: `https://leetcode.com/problems/${question.titleSlug}/`,
+  }));
 };
 /**
  * Fetch LeetCode contest history for a user.

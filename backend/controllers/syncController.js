@@ -37,7 +37,12 @@ const syncLeetCode = async (req, res, next) => {
     const syncStart = new Date();
 
     // Fetch solved problems from LeetCode
-    const fetchedProblems = await fetchSolvedProblems(username.trim());
+    const sessionCookie = req.body.sessionCookie;
+    if (typeof sessionCookie !== 'string' || !sessionCookie.trim() || sessionCookie.length > 8192) {
+      return errorResponse(res, 'A valid LeetCode session cookie is required to import all solved problems.', 400);
+    }
+
+    const fetchedProblems = await fetchSolvedProblems(username.trim(), sessionCookie.trim());
 
     if (fetchedProblems.length === 0) {
       return successResponse(res, {
@@ -154,7 +159,8 @@ const syncLeetCode = async (req, res, next) => {
   } catch (error) {
     if (
       error.message.includes('not found') ||
-      error.message.includes('username is required')
+      error.message.includes('username is required') ||
+      error.message.includes('session')
     ) {
       return errorResponse(res, error.message, 400);
     }

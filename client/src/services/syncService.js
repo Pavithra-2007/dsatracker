@@ -1,8 +1,8 @@
 import api from './api';
 
 const syncService = {
-  syncLeetCode: async (username = '') => {
-    const res = await api.post('/sync/leetcode', { username });
+  syncLeetCode: async (username = '', sessionCookie = '') => {
+    const res = await api.post('/sync/leetcode', { username, sessionCookie });
     return res.data;
   },
 

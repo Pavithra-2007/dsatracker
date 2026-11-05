@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 
 const LeetCodeSync = ({ savedUsername = '', onSynced }) => {
   const [username, setUsername]   = useState(savedUsername);
+  const [sessionCookie, setSessionCookie] = useState('');
   const [syncing, setSyncing]     = useState(false);
   const [result, setResult]       = useState(null);
 
@@ -12,12 +13,17 @@ const LeetCodeSync = ({ savedUsername = '', onSynced }) => {
       toast.error('Enter your LeetCode username');
       return;
     }
+    if (!sessionCookie.trim()) {
+      toast.error('Enter your LeetCode session cookie to import all solved problems');
+      return;
+    }
 
     setSyncing(true);
     setResult(null);
 
     try {
-      const res = await syncService.syncLeetCode(username.trim());
+      const res = await syncService.syncLeetCode(username.trim(), sessionCookie.trim());
+      setSessionCookie('');
       const resultData = res.data;
       setResult(resultData);
 
@@ -30,6 +36,7 @@ const LeetCodeSync = ({ savedUsername = '', onSynced }) => {
     } catch (err) {
       toast.error(err.response?.data?.message || 'Sync failed');
     } finally {
+      setSessionCookie('');
       setSyncing(false);
     }
   };
@@ -56,7 +63,7 @@ const LeetCodeSync = ({ savedUsername = '', onSynced }) => {
         <input
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSync()}
+          onKeyDown={(e) => e.key === 'Enter' && !syncing && handleSync()}
           placeholder="Your LeetCode username"
           className="flex-1 bg-gray-800 border border-gray-700 text-white
                      rounded-xl px-4 py-2.5 text-sm placeholder-gray-500
@@ -81,9 +88,25 @@ const LeetCodeSync = ({ savedUsername = '', onSynced }) => {
         </button>
       </div>
 
+      <label className="block text-xs text-gray-400 mb-2" htmlFor="leetcode-session-cookie">
+        LeetCode session cookie
+      </label>
+      <input
+        id="leetcode-session-cookie"
+        type="password"
+        autoComplete="off"
+        value={sessionCookie}
+        onChange={(e) => setSessionCookie(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && !syncing && handleSync()}
+        placeholder="Paste the LEETCODE_SESSION cookie value"
+        className="w-full bg-gray-800 border border-gray-700 text-white rounded-xl
+                   px-4 py-2.5 text-sm placeholder-gray-500 focus:outline-none
+                   focus:border-yellow-500 transition mb-3"
+      />
+
       {/* Info note */}
       <p className="text-gray-600 text-xs mb-4">
-        ℹ️ Fetches your last 20 accepted submissions. Only new problems are imported.
+        ℹ️ LeetCode only exposes all solved problems to a signed-in session. The cookie is used for this sync request and cleared afterward; it is not saved to your account. Existing problems are skipped.
       </p>
 
       {/* Result Card */}
