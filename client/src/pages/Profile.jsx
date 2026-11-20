@@ -3,16 +3,16 @@ import DashboardLayout from '../components/layout/DashboardLayout';
 import ProgressBar from '../components/ui/ProgressBar';
 import CodingProfiles from '../components/profile/CodingProfiles';
 import LeetCodeSync from '../components/profile/LeetCodeSync';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import goalService from '../services/goalService';
 import authService from '../services/authService';
 import toast from 'react-hot-toast';
 
 const ACHIEVEMENTS = [
-  { icon: '🥇', label: 'First Problem',  desc: 'Solved first problem',    check: (u) => u.totalProblems >= 1   },
-  { icon: '💪', label: '10 Problems',    desc: 'Solved 10 problems',       check: (u) => u.totalProblems >= 10  },
-  { icon: '🚀', label: '50 Problems',    desc: 'Solved 50 problems',       check: (u) => u.totalProblems >= 50  },
-  { icon: '💯', label: '100 Problems',   desc: 'Solved 100 problems',      check: (u) => u.totalProblems >= 100 },
+  { icon: '🥇', label: 'First Problem',  desc: 'Solved first problem',    check: (u) => u.solvedCount >= 1   },
+  { icon: '💪', label: '10 Problems',    desc: 'Solved 10 problems',       check: (u) => u.solvedCount >= 10  },
+  { icon: '🚀', label: '50 Problems',    desc: 'Solved 50 problems',       check: (u) => u.solvedCount >= 50  },
+  { icon: '💯', label: '100 Problems',   desc: 'Solved 100 problems',      check: (u) => u.solvedCount >= 100 },
   { icon: '🔥', label: '7 Day Streak',   desc: '7 consecutive days',       check: (u) => u.longestStreak >= 7   },
   { icon: '⚡', label: '30 Day Streak',  desc: '30 consecutive days',      check: (u) => u.longestStreak >= 30  },
 ];
@@ -41,10 +41,17 @@ const Profile = () => {
   }, []);
 
   const handleProfileSave = async () => {
+    const name = profileForm.name.trim();
+    if (!name) {
+      toast.error('Name is required');
+      return;
+    }
+
     setSaving(true);
     try {
-      const res = await authService.updateProfile(profileForm);
+      const res = await authService.updateProfile({ ...profileForm, name });
       updateUser(res.data);
+      setProfileForm({ name: res.data.name, avatar: res.data.avatar || '' });
       toast.success('Profile updated!');
       setEditMode(false);
     } catch {
@@ -55,20 +62,29 @@ const Profile = () => {
   };
 
   const handleGoalSave = async () => {
+    const targets = Object.fromEntries(
+      Object.entries(goalForm).map(([type, value]) => [type, Number(value)])
+    );
+    if (Object.values(targets).some((target) => !Number.isInteger(target) || target < 1)) {
+      toast.error('Each goal must be a whole number greater than zero');
+      return;
+    }
+
     setSaving(true);
     try {
       await Promise.all([
-        goalService.setGoal({ type: 'daily',   target: Number(goalForm.daily)   }),
-        goalService.setGoal({ type: 'weekly',  target: Number(goalForm.weekly)  }),
-        goalService.setGoal({ type: 'monthly', target: Number(goalForm.monthly) }),
+        goalService.setGoal({ type: 'daily', target: targets.daily }),
+        goalService.setGoal({ type: 'weekly', target: targets.weekly }),
+        goalService.setGoal({ type: 'monthly', target: targets.monthly }),
       ]);
-      await authService.updateProfile({
+      const profile = await authService.updateProfile({
         settings: {
-          dailyGoal:   Number(goalForm.daily),
-          weeklyGoal:  Number(goalForm.weekly),
-          monthlyGoal: Number(goalForm.monthly),
+          dailyGoal: targets.daily,
+          weeklyGoal: targets.weekly,
+          monthlyGoal: targets.monthly,
         },
       });
+      updateUser(profile.data);
       toast.success('Goals updated!');
       const res = await goalService.getGoals();
       setGoals(res.data || []);
@@ -76,6 +92,19 @@ const Profile = () => {
       toast.error('Failed to update goals');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const refreshProfileData = async () => {
+    try {
+      const [profile, goalData] = await Promise.all([
+        authService.getProfile(),
+        goalService.getGoals(),
+      ]);
+      updateUser(profile.data);
+      setGoals(goalData.data || []);
+    } catch {
+      toast.error('Profile synced, but displayed stats could not be refreshed');
     }
   };
 
@@ -129,7 +158,12 @@ const Profile = () => {
 
           {/* Edit toggle */}
           <button
-            onClick={() => setEditMode(!editMode)}
+            onClick={() => {
+              if (editMode) {
+                setProfileForm({ name: user?.name || '', avatar: user?.avatar || '' });
+              }
+              setEditMode(!editMode);
+            }}
             className="mt-4 w-full bg-gray-800 hover:bg-gray-700 border border-gray-700
                        text-gray-300 text-sm font-medium py-2 rounded-xl transition"
           >
@@ -297,7 +331,7 @@ const Profile = () => {
       <div>
         <LeetCodeSync
           savedUsername={user?.codingProfiles?.leetcode?.username || ''}
-          onSynced={() => window.location.reload()}
+          onSynced={refreshProfileData}
         />
       </div>
 

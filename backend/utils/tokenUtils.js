@@ -6,7 +6,7 @@ const signToken = (id) => {
   });
 };
 
-const sendTokenResponse = (user, statusCode, res) => {
+const sendTokenResponse = (user, statusCode, res, progress = {}) => {
   const token = signToken(user._id);
 
   const cookieOptions = {
@@ -25,8 +25,7 @@ const sendTokenResponse = (user, statusCode, res) => {
 
   res.status(statusCode).json({
     success: true,
-    token,
-    user: userObj,
+    user: { ...userObj, ...progress },
   });
 };
 

@@ -55,14 +55,15 @@ const PLATFORMS = [
   },
 ];
 
+const makeProfileForm = (user) => Object.fromEntries(
+  PLATFORMS.map(({ key }) => [key, {
+    username: user?.codingProfiles?.[key]?.username || '',
+    url: user?.codingProfiles?.[key]?.url || '',
+  }])
+);
+
 const CodingProfiles = ({ user, updateUser }) => {
-  const [form, setForm] = useState({
-    leetcode:   { username: user?.codingProfiles?.leetcode?.username   || '', url: user?.codingProfiles?.leetcode?.url   || '' },
-    github:     { username: user?.codingProfiles?.github?.username     || '', url: user?.codingProfiles?.github?.url     || '' },
-    codeforces: { username: user?.codingProfiles?.codeforces?.username || '', url: user?.codingProfiles?.codeforces?.url || '' },
-    gfg:        { username: user?.codingProfiles?.gfg?.username        || '', url: user?.codingProfiles?.gfg?.url        || '' },
-    hackerrank: { username: user?.codingProfiles?.hackerrank?.username || '', url: user?.codingProfiles?.hackerrank?.url || '' },
-  });
+  const [form, setForm] = useState(() => makeProfileForm(user));
 
   const [saving, setSaving] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -80,7 +81,11 @@ const CodingProfiles = ({ user, updateUser }) => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const res = await authService.updateProfile({ codingProfiles: form });
+      const codingProfiles = Object.fromEntries(
+        PLATFORMS.map(({ key }) => [key, { username: form[key].username.trim() }])
+      );
+      const res = await authService.updateProfile({ codingProfiles });
+      setForm(makeProfileForm(res.data));
       updateUser(res.data);
       toast.success('Coding profiles saved!');
       setEditMode(false);
@@ -103,8 +108,12 @@ const CodingProfiles = ({ user, updateUser }) => {
           </p>
         </div>
         <button
-          onClick={() => setEditMode(!editMode)}
-          className={`text-sm px-3 py-1.5 rounded-lg transition ${
+          disabled={saving}
+          onClick={() => {
+            setForm(makeProfileForm(user));
+            setEditMode(!editMode);
+          }}
+          className={`text-sm px-3 py-1.5 rounded-lg transition disabled:opacity-50 ${
             editMode
               ? 'bg-gray-800 text-gray-400 hover:text-white'
               : 'bg-violet-600/20 text-violet-400 hover:bg-violet-600/30'
