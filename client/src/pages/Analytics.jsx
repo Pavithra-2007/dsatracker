@@ -9,12 +9,6 @@ import {
 } from 'recharts';
 
 // ── Color Palettes ────────────────────────────────────────────────────────────
-const DIFFICULTY_COLORS = {
-  Easy:   '#22c55e',
-  Medium: '#eab308',
-  Hard:   '#ef4444',
-};
-
 const TOPIC_COLORS = [
   '#7c3aed', '#6d28d9', '#5b21b6', '#4c1d95',
   '#8b5cf6', '#a78bfa', '#c4b5fd', '#ddd6fe',

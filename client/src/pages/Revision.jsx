@@ -121,7 +121,10 @@ const Revision = () => {
     }
   };
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => {
+    const timer = setTimeout(fetchAll, 0);
+    return () => clearTimeout(timer);
+  }, []);
 
   const handleMark = async (id) => {
     try {

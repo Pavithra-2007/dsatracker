@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react';
 import DashboardLayout from '../components/layout/DashboardLayout';
 import Modal from '../components/ui/Modal';
-import Badge from '../components/ui/Badge';
 import contestService from '../services/contestService';
 import syncService from '../services/syncService';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import toast from 'react-hot-toast';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, ReferenceLine,
+  Tooltip, ResponsiveContainer,
 } from 'recharts';
 
 const PLATFORMS = ['LeetCode', 'Codeforces', 'CodeChef', 'AtCoder', 'HackerRank', 'Other'];
@@ -56,7 +55,10 @@ const Contests = () => {
     }
   };
 
-  useEffect(() => { fetchContests(); }, []);
+  useEffect(() => {
+    const timer = setTimeout(fetchContests, 0);
+    return () => clearTimeout(timer);
+  }, []);
 
   // ── Sync from LeetCode ──────────────────────────────────────────────────
   const handleSync = async () => {
