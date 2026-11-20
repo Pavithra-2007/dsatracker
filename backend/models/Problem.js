@@ -25,6 +25,7 @@ problemId: {
   default: '',
   trim: true,
 },
+    externalKey: { type: String, select: false },
     platform: {
       type: String,
       enum: PLATFORMS,
@@ -114,5 +115,17 @@ problemSchema.index({ user: 1, companies: 1 });
 problemSchema.index({ user: 1, nextRevisionDate: 1 });
 problemSchema.index({ user: 1, isFavorite: 1 });
 problemSchema.index({ user: 1, createdAt: -1 });
+problemSchema.index({ user: 1, externalKey: 1 }, {
+  unique: true,
+  partialFilterExpression: { externalKey: { $type: 'string' } },
+});
+
+problemSchema.pre('validate', function () {
+  if (this.platform === 'LeetCode' && this.slug) {
+    this.externalKey = `leetcode:${this.slug.toLowerCase()}`;
+  } else {
+    this.externalKey = undefined;
+  }
+});
 
 module.exports = mongoose.models.Problem || mongoose.model('Problem', problemSchema);

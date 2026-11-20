@@ -4,12 +4,10 @@ const {
   saveProblem,
 } = require('../services/fetchProblem');
 
-const { updateStreak } = require('../services/streakService');
 const { generateRevisionSchedule } = require('../services/revisionService');
+const { reconcileActivity } = require('../services/progressService');
 
 const Revision  = require('../models/Revision');
-const Activity  = require('../models/Activity');
-const User      = require('../models/User');
 
 const { successResponse, errorResponse } = require('../utils/responseUtils');
 
@@ -56,6 +54,7 @@ const previewProblem = async (req, res, next) => {
  * Handles streak, revision schedule, and activity.
  */
 const saveFetchedProblem = async (req, res, next) => {
+  let createdProblem;
   try {
     const {
       platform, identifier,
@@ -92,12 +91,13 @@ const saveFetchedProblem = async (req, res, next) => {
       isFavorite,
       companies,
       tags,
-      dateSolved: new Date(),
+      dateSolved: status === 'Solved' ? new Date() : null,
     });
+    createdProblem = problem;
 
     // Create revision schedule if solved
     if (status === 'Solved') {
-      const scheduledDates = generateRevisionSchedule(new Date());
+      const scheduledDates = generateRevisionSchedule(problem.dateSolved);
       await Revision.create({
         user:           req.user._id,
         problem:        problem._id,
@@ -106,27 +106,14 @@ const saveFetchedProblem = async (req, res, next) => {
       });
     }
 
-    // Update streak and total problems
-    const user = await User.findById(req.user._id);
-    updateStreak(user);
-    user.totalProblems += 1;
-    await user.save();
-
-    // Upsert today's activity
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    await Activity.findOneAndUpdate(
-      { user: req.user._id, date: today },
-      {
-        $inc: { problemsSolved: 1, minutesStudied: Number(timeTaken) || 0 },
-        $push: { problems: problem._id },
-      },
-      { upsert: true, new: true }
-    );
+    await reconcileActivity(req.user._id);
 
     return successResponse(res, problem, 'Problem saved successfully!', 201);
   } catch (error) {
+    if (createdProblem) {
+      await Revision.deleteOne({ user: req.user._id, problem: createdProblem._id }).catch(() => {});
+      await createdProblem.deleteOne().catch(() => {});
+    }
     if (
       error.message.includes('not found') ||
       error.message.includes('not supported') ||

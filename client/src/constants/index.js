@@ -3,7 +3,7 @@ export const TOPICS = [
   'Trees', 'BST', 'Heap', 'Trie', 'Graph', 'DFS', 'BFS',
   'Backtracking', 'Greedy', 'Dynamic Programming', 'Recursion',
   'Bit Manipulation', 'Sliding Window', 'Binary Search', 'Math',
-  'Sorting', 'Hashing', 'Prefix Sum',
+  'Sorting', 'Hashing', 'Prefix Sum', 'Uncategorized',
 ];
 
 export const PLATFORMS = [
@@ -14,7 +14,7 @@ export const PLATFORMS = [
 export const DIFFICULTIES = ['Easy', 'Medium', 'Hard'];
 
 export const STATUSES = [
-  'Not Started', 'Solved', 'Revised', 'Need Revision',
+  'Not Started', 'Solved', 'Need Revision',
 ];
 
 export const COMPANIES = [

@@ -13,6 +13,10 @@ const activitySchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
+    dayKey: {
+      type: String,
+      match: /^\d{4}-\d{2}-\d{2}$/,
+    },
     problemsSolved: {
       type: Number,
       default: 0,
@@ -37,5 +41,9 @@ const activitySchema = new mongoose.Schema(
 
 activitySchema.index({ user: 1, date: -1 });
 activitySchema.index({ user: 1, date: 1 }, { unique: true });
+activitySchema.index({ user: 1, dayKey: 1 }, {
+  unique: true,
+  partialFilterExpression: { dayKey: { $type: 'string' } },
+});
 
 module.exports = mongoose.models.Activity || mongoose.model('Activity', activitySchema);

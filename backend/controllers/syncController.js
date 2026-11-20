@@ -1,13 +1,14 @@
 const { fetchSolvedProblems, fetchContestHistory } = require('../services/platforms/leetcodeSync');
 const { generateRevisionSchedule } = require('../services/revisionService');
-const { updateStreak } = require('../services/streakService');
+const { reconcileActivity } = require('../services/progressService');
+const { normalizeAndDeduplicate, buildSolveDateUpdates } = require('../services/leetcodeImportService');
 
 const Problem  = require('../models/Problem');
 const Revision = require('../models/Revision');
-const Activity = require('../models/Activity');
 const User     = require('../models/User');
 
 const { successResponse, errorResponse } = require('../utils/responseUtils');
+const LEETCODE_METADATA_NOTICE = 'LeetCode does not provide topic tags or a submission date for every solved problem. Missing topics are labeled Uncategorized and unknown dates are left blank.';
 
 /**
  * POST /api/sync/leetcode
@@ -38,7 +39,7 @@ const syncLeetCode = async (req, res, next) => {
 
     // Fetch solved problems from LeetCode
     const sessionCookie = req.body.sessionCookie;
-    if (typeof sessionCookie !== 'string' || !sessionCookie.trim() || sessionCookie.length > 8192) {
+    if (typeof sessionCookie !== 'string' || !sessionCookie.trim() || sessionCookie.length > 8192 || /[\r\n;]/.test(sessionCookie)) {
       return errorResponse(res, 'A valid LeetCode session cookie is required to import all solved problems.', 400);
     }
 
@@ -51,46 +52,50 @@ const syncLeetCode = async (req, res, next) => {
         total:     0,
         syncTime:  new Date() - syncStart,
         username,
+        metadataNotice: LEETCODE_METADATA_NOTICE,
       }, 'No new problems found on LeetCode');
     }
 
     // Compare with existing problems in MongoDB
     const existingSlugs = await Problem.find(
       { user: userId, platform: 'LeetCode' },
-      { slug: 1, problemId: 1 }
+      { slug: 1, problemId: 1, status: 1, dateSolved: 1 }
     ).lean();
 
-    const existingSet = new Set([
-      ...existingSlugs.map((p) => p.slug),
-      ...existingSlugs.map((p) => p.problemId),
-    ]);
-
-    // Filter only new problems
-    const newProblems = fetchedProblems.filter(
-      (p) => !existingSet.has(p.slug) && !existingSet.has(p.problemId)
-    );
-
+    const { problems: newProblems, records, invalid } = normalizeAndDeduplicate(fetchedProblems, existingSlugs);
+    const dateUpdates = buildSolveDateUpdates(records, existingSlugs);
+    if (dateUpdates.length) {
+      await Problem.bulkWrite(dateUpdates.map(({ _id, dateSolved }) => ({
+        updateOne: {
+          filter: { _id, user: userId, status: { $in: ['Solved', 'Revised'] } },
+          update: { $set: { dateSolved } },
+        },
+      })), { ordered: false });
+    }
     const skipped = fetchedProblems.length - newProblems.length;
 
     if (newProblems.length === 0) {
+      if (dateUpdates.length) await reconcileActivity(userId);
       return successResponse(res, {
         imported:  0,
         skipped,
+        refreshedDates: dateUpdates.length,
         total:     fetchedProblems.length,
         syncTime:  new Date() - syncStart,
         username,
         message:   'All problems already exist in your tracker',
+        metadataNotice: LEETCODE_METADATA_NOTICE,
       }, 'Already up to date!');
     }
 
     // Save new problems to MongoDB
     const savedProblems = [];
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    let failed = 0;
 
     for (const p of newProblems) {
+      let problem;
       try {
-        const problem = await Problem.create({
+        problem = await Problem.create({
           user:        userId,
           platform:    p.platform,
           problemId:   p.problemId,
@@ -100,45 +105,27 @@ const syncLeetCode = async (req, res, next) => {
           topic:       p.topic,
           problemLink: p.url,
           status:      'Solved',
-          dateSolved:  new Date(),
+          dateSolved:  p.dateSolved,
         });
 
-        // Create revision schedule
-        const scheduledDates = generateRevisionSchedule(new Date());
-        await Revision.create({
-          user:           userId,
-          problem:        problem._id,
-          scheduledDates,
-          currentStep:    0,
-        });
+        if (p.dateSolved) {
+          const scheduledDates = generateRevisionSchedule(p.dateSolved);
+          await Revision.create({ user: userId, problem: problem._id, scheduledDates, currentStep: 0 });
+        }
 
         savedProblems.push(problem);
       } catch {
-        // Skip problems that fail individually
+        if (problem) {
+          await Revision.deleteOne({ user: userId, problem: problem._id });
+          await Problem.deleteOne({ _id: problem._id, user: userId });
+        }
+        failed += 1;
         continue;
       }
     }
 
-    // Update streak and total problems
-    if (savedProblems.length > 0) {
-      const user = await User.findById(userId);
-      updateStreak(user);
-      user.totalProblems += savedProblems.length;
-      await user.save();
-
-      // Update today's activity
-      await Activity.findOneAndUpdate(
-        { user: userId, date: today },
-        {
-          $inc: {
-            problemsSolved: savedProblems.length,
-          },
-          $push: {
-            problems: { $each: savedProblems.map((p) => p._id) },
-          },
-        },
-        { upsert: true, new: true }
-      );
+    if (savedProblems.length > 0 || dateUpdates.length > 0) {
+      await reconcileActivity(userId);
     }
 
     const syncTime = new Date() - syncStart;
@@ -146,6 +133,9 @@ const syncLeetCode = async (req, res, next) => {
     return successResponse(res, {
       imported:  savedProblems.length,
       skipped,
+      failed,
+      invalid,
+      refreshedDates: dateUpdates.length,
       total:     fetchedProblems.length,
       syncTime,
       username,
@@ -154,6 +144,7 @@ const syncLeetCode = async (req, res, next) => {
         difficulty: p.difficulty,
         topic:      p.topic,
       })),
+      metadataNotice: LEETCODE_METADATA_NOTICE,
     }, `Synced ${savedProblems.length} new problems from LeetCode!`);
 
   } catch (error) {

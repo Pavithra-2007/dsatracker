@@ -28,7 +28,7 @@ const Companies = () => {
   useEffect(() => {
     const fetchAll = async () => {
       try {
-        const res = await problemService.getProblems({ limit: 1000 });
+        const res = await problemService.getAllProblems();
         const all = res.data || [];
         setProblems(all);
 

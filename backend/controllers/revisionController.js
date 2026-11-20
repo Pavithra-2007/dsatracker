@@ -2,6 +2,8 @@ const Revision  = require('../models/Revision');
 const Problem   = require('../models/Problem');
 const { successResponse, errorResponse } = require('../utils/responseUtils');
 const { REVISION_INTERVALS } = require('../config/constants');
+const { dayKey, dateFromDayKey } = require('../services/progressService');
+const { getProblemStatusAfterRevision, isRevisionDue } = require('../services/revisionService');
 
 /**
  * GET /api/revision
@@ -9,8 +11,7 @@ const { REVISION_INTERVALS } = require('../config/constants');
  */
 const getRevisions = async (req, res, next) => {
   try {
-    const endOfDay = new Date();
-    endOfDay.setHours(23, 59, 59, 999);
+    const today = dayKey(new Date());
 
     const revisions = await Revision.find({
       user:       req.user._id,
@@ -19,7 +20,7 @@ const getRevisions = async (req, res, next) => {
 
     const due = revisions.filter((r) => {
       const next = r.scheduledDates[r.currentStep];
-      return next && next <= endOfDay;
+      return next && dayKey(next) <= today;
     });
 
     return successResponse(res, due, 'Revisions fetched');
@@ -35,11 +36,7 @@ const getRevisions = async (req, res, next) => {
  */
 const getAllRevisions = async (req, res, next) => {
   try {
-    const now        = new Date();
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay   = new Date();
-    endOfDay.setHours(23, 59, 59, 999);
+    const today = dayKey(new Date());
 
     const all = await Revision.find({
       user: req.user._id,
@@ -62,10 +59,10 @@ const getAllRevisions = async (req, res, next) => {
         continue;
       }
 
-      const d = new Date(nextDate);
-      if (d < startOfDay) {
+      const d = dayKey(nextDate);
+      if (d < today) {
         overdue.push(r);
-      } else if (d >= startOfDay && d <= endOfDay) {
+      } else if (d === today) {
         dueToday.push(r);
       } else {
         upcoming.push(r);
@@ -107,24 +104,34 @@ const markRevised = async (req, res, next) => {
       user: req.user._id,
     });
     if (!revision) return errorResponse(res, 'Revision not found', 404);
+    if (revision.isComplete || revision.currentStep >= revision.scheduledDates.length) {
+      return errorResponse(res, 'This revision plan is already complete', 409);
+    }
+    if (!isRevisionDue(revision.scheduledDates[revision.currentStep])) {
+      return errorResponse(res, 'This revision is not due yet', 409);
+    }
+
+    const problem = await Problem.findOne({ _id: revision.problem, user: req.user._id });
+    if (!problem || !['Solved', 'Revised'].includes(problem.status)) {
+      return errorResponse(res, 'This problem is no longer eligible for revision', 409);
+    }
 
     revision.completedDates.push(new Date());
     revision.currentStep += 1;
 
-    if (revision.currentStep >= REVISION_INTERVALS.length) {
+    if (revision.currentStep >= Math.min(REVISION_INTERVALS.length, revision.scheduledDates.length)) {
       revision.isComplete = true;
     }
 
     await revision.save();
 
-    await Problem.findByIdAndUpdate(revision.problem, {
-      lastRevised:      new Date(),
-      $inc:             { revisionCount: 1 },
-      nextRevisionDate: revision.isComplete
-        ? null
-        : revision.scheduledDates[revision.currentStep],
-      status: revision.isComplete ? 'Revised' : 'Revised',
+    problem.set({
+      lastRevised: new Date(),
+      revisionCount: problem.revisionCount + 1,
+      nextRevisionDate: revision.isComplete ? null : revision.scheduledDates[revision.currentStep],
+      status: getProblemStatusAfterRevision(revision.isComplete),
     });
+    await problem.save();
 
     return successResponse(res, revision, 'Marked as revised');
   } catch (error) {
@@ -145,11 +152,20 @@ const skipRevision = async (req, res, next) => {
     if (!revision) return errorResponse(res, 'Revision not found', 404);
 
     revision.skippedCount += 1;
-    const newDate = new Date();
-    newDate.setDate(newDate.getDate() + 2);
+    if (revision.isComplete || revision.currentStep >= revision.scheduledDates.length) {
+      return errorResponse(res, 'This revision plan is already complete', 409);
+    }
+    const newDateKey = dayKey(new Date());
+    const newDate = dateFromDayKey(newDateKey);
+    newDate.setUTCDate(newDate.getUTCDate() + 2);
     revision.scheduledDates[revision.currentStep] = newDate;
     revision.markModified('scheduledDates');
     await revision.save();
+
+    await Problem.updateOne(
+      { _id: revision.problem, user: req.user._id },
+      { $set: { nextRevisionDate: newDate } },
+    );
 
     return successResponse(res, revision, 'Revision rescheduled by 2 days');
   } catch (error) {

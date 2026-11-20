@@ -129,6 +129,12 @@ const LeetCodeSync = ({ savedUsername = '', onSynced }) => {
             </div>
           </div>
 
+          {result.metadataNotice && (
+            <p className="text-amber-300/80 text-xs text-center" role="status">
+              {result.metadataNotice}
+            </p>
+          )}
+
           {/* Sync time */}
           <p className="text-gray-600 text-xs text-center">
             Sync completed in {((result.syncTime || 0) / 1000).toFixed(1)}s

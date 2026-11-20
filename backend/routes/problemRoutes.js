@@ -1,4 +1,5 @@
 const express = require('express');
+const { param } = require('express-validator');
 const router = express.Router();
 
 const {
@@ -11,7 +12,9 @@ const {
 
 const { protect } = require('../middleware/auth');
 const validate = require('../middleware/validate');
-const { problemValidator } = require('../validators/problemValidator');
+const { problemValidator, problemUpdateValidator } = require('../validators/problemValidator');
+
+const problemIdValidator = [param('id').isMongoId().withMessage('Invalid problem ID')];
 
 router.use(protect); // all problem routes are protected
 
@@ -20,8 +23,8 @@ router.route('/')
   .post(problemValidator, validate, createProblem);
 
 router.route('/:id')
-  .get(getProblemById)
-  .put(updateProblem)
-  .delete(deleteProblem);
+  .get(problemIdValidator, validate, getProblemById)
+  .put(problemIdValidator, problemUpdateValidator, validate, updateProblem)
+  .delete(problemIdValidator, validate, deleteProblem);
 
 module.exports = router;

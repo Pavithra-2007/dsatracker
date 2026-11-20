@@ -22,6 +22,7 @@ const TOPICS = [
   'Sorting',
   'Hashing',
   'Prefix Sum',
+  'Uncategorized',
 ];
 
 const COMPANIES = [

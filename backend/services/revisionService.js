@@ -1,16 +1,16 @@
 const { REVISION_INTERVALS } = require('../config/constants');
+const { dayKey, dateFromDayKey } = require('./progressService');
 
 /**
  * Generate scheduled revision dates from a solve date.
  * Returns array of Date objects for D+1, D+3, D+7, D+15, D+30, D+60
  */
 const generateRevisionSchedule = (solveDate = new Date()) => {
-  const base = new Date(solveDate);
-  base.setHours(0, 0, 0, 0);
+  const base = dateFromDayKey(dayKey(solveDate));
 
   return REVISION_INTERVALS.map((days) => {
     const d = new Date(base);
-    d.setDate(d.getDate() + days);
+    d.setUTCDate(d.getUTCDate() + days);
     return d;
   });
 };
@@ -22,6 +22,9 @@ const getNextRevisionDate = (scheduledDates, currentStep) => {
   if (currentStep >= scheduledDates.length) return null;
   return scheduledDates[currentStep];
 };
+
+const getProblemStatusAfterRevision = (isComplete) => (isComplete ? 'Revised' : 'Solved');
+const isRevisionDue = (scheduledDate, now = new Date()) => Boolean(scheduledDate) && dayKey(scheduledDate) <= dayKey(now);
 
 /**
  * Calculate revision due stats
@@ -53,5 +56,7 @@ const calcRevisionStats = (revisions) => {
 module.exports = {
   generateRevisionSchedule,
   getNextRevisionDate,
+  getProblemStatusAfterRevision,
+  isRevisionDue,
   calcRevisionStats,
 };

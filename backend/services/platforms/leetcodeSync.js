@@ -112,6 +112,7 @@ const fetchAllAcceptedQuestions = async (sessionCookie) => {
               title
               translatedTitle
               difficulty
+              lastSubmittedAt
             }
           }
         }
@@ -163,16 +164,32 @@ const fetchSolvedProblems = async (username, sessionCookie) => {
       .map((question) => [question.titleSlug, question])
   );
 
-  return [...uniqueQuestions.values()].map((question) => ({
-    platform: 'LeetCode',
-    problemId: String(question.frontendId),
-    slug: question.titleSlug,
-    title: question.translatedTitle || question.title,
-    difficulty: String(question.difficulty).charAt(0).toUpperCase()
-      + String(question.difficulty).slice(1).toLowerCase(),
-    topic: 'Arrays',
-    url: `https://leetcode.com/problems/${question.titleSlug}/`,
-  }));
+  return [...uniqueQuestions.values()].map((question) => {
+    let dateSolved = null;
+    if (question.lastSubmittedAt !== undefined && question.lastSubmittedAt !== null) {
+      const numericTimestamp = typeof question.lastSubmittedAt === 'number'
+        ? question.lastSubmittedAt
+        : (/^\d+$/.test(String(question.lastSubmittedAt)) ? Number(question.lastSubmittedAt) : null);
+      const timestamp = numericTimestamp === null
+        ? question.lastSubmittedAt
+        : (numericTimestamp < 1000000000000 ? numericTimestamp * 1000 : numericTimestamp);
+      const parsed = new Date(timestamp);
+      if (Number.isFinite(parsed.getTime())) dateSolved = parsed;
+    }
+    const rawDifficulty = String(question.difficulty || '').toLowerCase();
+    return {
+      platform: 'LeetCode',
+      problemId: String(question.frontendId),
+      slug: question.titleSlug,
+      title: question.translatedTitle || question.title,
+      difficulty: rawDifficulty.charAt(0).toUpperCase() + rawDifficulty.slice(1),
+      // This endpoint does not include topic tags; never invent topic metadata.
+      topic: 'Uncategorized',
+      topicAvailable: false,
+      dateSolved,
+      url: `https://leetcode.com/problems/${question.titleSlug}/`,
+    };
+  });
 };
 /**
  * Fetch LeetCode contest history for a user.

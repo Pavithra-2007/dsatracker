@@ -50,7 +50,9 @@ const saveProblem = async (userId, fetchedData, extraData = {}) => {
     topic,
     problemLink: url,
     status:      extraData.status      || 'Solved',
-    dateSolved:  extraData.dateSolved  || new Date(),
+    dateSolved:  extraData.dateSolved !== undefined
+      ? extraData.dateSolved
+      : (extraData.status || 'Solved') === 'Solved' ? new Date() : null,
     notes:       extraData.notes       || '',
     isFavorite:  extraData.isFavorite  || false,
     timeTaken:   extraData.timeTaken   || 0,

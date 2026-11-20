@@ -1,169 +1,75 @@
 const Problem = require('../models/Problem');
-const Activity = require('../models/Activity');
 const Contest = require('../models/Contest');
-const User = require('../models/User');
+const { APP_TIME_ZONE, getProgressSummary, dateFromDayKey } = require('../services/progressService');
 const { successResponse } = require('../utils/responseUtils');
 
 const getAnalytics = async (req, res, next) => {
   try {
     const userId = req.user._id;
-
-    // ── Problems by topic ──────────────────────────────────────────────────
-    const byTopic = await Problem.aggregate([
-      { $match: { user: userId, status: { $in: ['Solved', 'Revised'] } } },
-      { $group: { _id: '$topic', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
+    const solved = { $in: ['$status', ['Solved', 'Revised']] };
+    const [progress, byTopic, byDifficulty, byPlatform, byCompany, monthly, weekly, contestHistory] = await Promise.all([
+      getProgressSummary(userId),
+      Problem.aggregate([
+        { $match: { user: userId, status: { $in: ['Solved', 'Revised'] } } },
+        { $group: { _id: '$topic', count: { $sum: 1 } } }, { $sort: { count: -1 } },
+      ]),
+      Problem.aggregate([
+        { $match: { user: userId } },
+        { $group: { _id: '$difficulty', total: { $sum: 1 }, solved: { $sum: { $cond: [solved, 1, 0] } } } },
+      ]),
+      Problem.aggregate([
+        { $match: { user: userId } }, { $group: { _id: '$platform', count: { $sum: 1 } } }, { $sort: { count: -1 } },
+      ]),
+      Problem.aggregate([
+        { $match: { user: userId, companies: { $exists: true, $ne: [] } } }, { $unwind: '$companies' },
+        { $group: { _id: '$companies', count: { $sum: 1 } } }, { $sort: { count: -1 } },
+      ]),
+      Problem.aggregate([
+        { $match: { user: userId, status: { $in: ['Solved', 'Revised'] }, dateSolved: { $type: 'date' } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$dateSolved', timezone: APP_TIME_ZONE } }, count: { $sum: 1 } } },
+        { $sort: { _id: -1 } }, { $limit: 6 }, { $sort: { _id: 1 } },
+      ]),
+      Problem.aggregate([
+        { $match: { user: userId, status: { $in: ['Solved', 'Revised'] }, dateSolved: { $type: 'date', $gte: new Date(Date.now() - 56 * 86400000) } } },
+        { $group: { _id: { $dateToString: { format: '%G-W%V', date: '$dateSolved', timezone: APP_TIME_ZONE } }, count: { $sum: 1 } } },
+        { $sort: { _id: 1 } },
+      ]),
+      Contest.find({ user: userId }).sort({ date: 1 }).select('name platform rank ratingAfter ratingChange date'),
     ]);
 
-    // ── Problems by difficulty ─────────────────────────────────────────────
-    const byDifficulty = await Problem.aggregate([
-      { $match: { user: userId } },
-      {
-        $group: {
-          _id: '$difficulty',
-          total: { $sum: 1 },
-          solved: {
-            $sum: { $cond: [{ $in: ['$status', ['Solved', 'Revised']] }, 1, 0] },
-          },
-        },
+    return successResponse(res, {
+      overview: {
+        totalProblems: progress.totalProblems,
+        solvedCount: progress.solvedCount,
+        easyCount: progress.easyCount,
+        mediumCount: progress.mediumCount,
+        hardCount: progress.hardCount,
+        currentStreak: progress.currentStreak,
+        longestStreak: progress.longestStreak,
       },
-    ]);
-
-    // ── Problems by platform ───────────────────────────────────────────────
-    const byPlatform = await Problem.aggregate([
-      { $match: { user: userId } },
-      { $group: { _id: '$platform', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-    ]);
-
-    // ── Problems by company ────────────────────────────────────────────────
-    const byCompany = await Problem.aggregate([
-      { $match: { user: userId, companies: { $exists: true, $ne: [] } } },
-      { $unwind: '$companies' },
-      { $group: { _id: '$companies', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-    ]);
-
-    // ── Monthly progress — last 6 months ──────────────────────────────────
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-
-    const monthly = await Problem.aggregate([
-      {
-        $match: {
-          user: userId,
-          status: { $in: ['Solved', 'Revised'] },
-          dateSolved: { $gte: sixMonthsAgo },
-        },
-      },
-      {
-        $group: {
-          _id: {
-            year: { $year: '$dateSolved' },
-            month: { $month: '$dateSolved' },
-          },
-          count: { $sum: 1 },
-        },
-      },
-      { $sort: { '_id.year': 1, '_id.month': 1 } },
-    ]);
-
-    // ── Weekly progress — last 8 weeks ────────────────────────────────────
-    const eightWeeksAgo = new Date();
-    eightWeeksAgo.setDate(eightWeeksAgo.getDate() - 56);
-
-    const weekly = await Problem.aggregate([
-      {
-        $match: {
-          user: userId,
-          status: { $in: ['Solved', 'Revised'] },
-          dateSolved: { $gte: eightWeeksAgo },
-        },
-      },
-      {
-        $group: {
-          _id: { $week: '$dateSolved' },
-          count: { $sum: 1 },
-        },
-      },
-      { $sort: { '_id': 1 } },
-    ]);
-
-    // ── Overall stats ──────────────────────────────────────────────────────
-    const totalProblems = await Problem.countDocuments({ user: userId });
-
-    const solvedCount = await Problem.countDocuments({
-      user: userId,
-      status: { $in: ['Solved', 'Revised'] },
-    });
-
-    const easyCount = await Problem.countDocuments({
-      user: userId,
-      difficulty: 'Easy',
-      status: { $in: ['Solved', 'Revised'] },
-    });
-
-    const mediumCount = await Problem.countDocuments({
-      user: userId,
-      difficulty: 'Medium',
-      status: { $in: ['Solved', 'Revised'] },
-    });
-
-    const hardCount = await Problem.countDocuments({
-      user: userId,
-      difficulty: 'Hard',
-      status: { $in: ['Solved', 'Revised'] },
-    });
-
-    // ── Contest rating history ─────────────────────────────────────────────
-    const contestHistory = await Contest.find({ user: userId })
-      .sort({ date: 1 })
-      .select('name platform rank ratingAfter ratingChange date');
-
-    // ── User streak info ───────────────────────────────────────────────────
-    const user = await User.findById(userId).select(
-      'currentStreak longestStreak totalProblems lastActiveDate'
-    );
-
-    return successResponse(
-      res,
-      {
-        overview: {
-          totalProblems,
-          solvedCount,
-          easyCount,
-          mediumCount,
-          hardCount,
-          currentStreak: user.currentStreak,
-          longestStreak: user.longestStreak,
-        },
-        byTopic,
-        byDifficulty,
-        byPlatform,
-        byCompany,
-        monthly,
-        weekly,
-        contestHistory,
-      },
-      'Analytics fetched'
-    );
+      byTopic, byDifficulty, byPlatform, byCompany, monthly, weekly, contestHistory,
+    }, 'Analytics fetched');
   } catch (error) {
     next(error);
   }
 };
 
-// ── Heatmap — last 365 days ────────────────────────────────────────────────
 const getHeatmap = async (req, res, next) => {
   try {
     const oneYearAgo = new Date();
-    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-
-    const activities = await Activity.find({
-      user: req.user._id,
-      date: { $gte: oneYearAgo },
-    }).select('date problemsSolved minutesStudied');
-
-    return successResponse(res, activities, 'Heatmap data fetched');
+    oneYearAgo.setUTCFullYear(oneYearAgo.getUTCFullYear() - 1);
+    const days = await Problem.aggregate([
+      { $match: { user: req.user._id, status: { $in: ['Solved', 'Revised'] }, dateSolved: { $gte: oneYearAgo, $type: 'date' } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$dateSolved', timezone: APP_TIME_ZONE } },
+          problemsSolved: { $sum: 1 },
+          minutesStudied: { $sum: '$timeTaken' },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+    return successResponse(res, days.map(({ _id, ...activity }) => ({ date: dateFromDayKey(_id), ...activity })), 'Heatmap data fetched');
   } catch (error) {
     next(error);
   }
