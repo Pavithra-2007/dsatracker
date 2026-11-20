@@ -1,11 +1,11 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/useAuth';
 import toast from 'react-hot-toast';
 
 const navItems = [
   { path: '/dashboard', icon: '🏠', label: 'Dashboard' },
   { path: '/problems', icon: '📝', label: 'Problems' },
-  { path: '/topics', icon: '📚', label: 'Topics' },
+  { path: '/topics', icon: '📚', label: 'DSA Roadmap' },
   { path: '/revision', icon: '🔄', label: 'Revision' },
   { path: '/analytics', icon: '📊', label: 'Analytics' },
   { path: '/companies', icon: '🏢', label: 'Companies' },
@@ -18,9 +18,14 @@ const Sidebar = () => {
   const navigate = useNavigate();
 
   const handleLogout = async () => {
-    await logout();
-    toast.success('Logged out');
-    navigate('/login');
+    try {
+      await logout();
+      toast.success('Logged out');
+    } catch {
+      toast.error('Local session cleared; server logout could not be confirmed');
+    } finally {
+      navigate('/login');
+    }
   };
 
   return (

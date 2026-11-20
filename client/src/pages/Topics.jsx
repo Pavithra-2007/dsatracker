@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import DashboardLayout from '../components/layout/DashboardLayout';
 import ProgressBar from '../components/ui/ProgressBar';
 import topicService from '../services/topicService';
@@ -28,7 +29,16 @@ const TOPIC_ICONS = {
   'Sorting':             '🔢',
   'Hashing':             '#️⃣',
   'Prefix Sum':          '➕',
+  'Uncategorized':       '🗂️',
 };
+
+const ROADMAP_STAGES = [
+  { name: '1. Core foundations', description: 'Build comfort with common data shapes and basic operations.', topics: ['Arrays', 'Strings', 'Hashing', 'Math', 'Bit Manipulation'] },
+  { name: '2. Linear structures', description: 'Practice pointer movement, ordering and efficient lookup.', topics: ['Linked List', 'Stack', 'Queue', 'Trie', 'Heap'] },
+  { name: '3. Search and range patterns', description: 'Learn to narrow search spaces and reason about subarrays.', topics: ['Sorting', 'Binary Search', 'Sliding Window', 'Prefix Sum'] },
+  { name: '4. Recursion and choices', description: 'Explore decision trees, local choices and reusable subproblems.', topics: ['Recursion', 'Backtracking', 'Greedy', 'Dynamic Programming'] },
+  { name: '5. Trees and graphs', description: 'Move from hierarchical structures to graph traversal.', topics: ['Trees', 'BST', 'Graph', 'DFS', 'BFS'] },
+];
 
 const TopicCard = ({ topic }) => {
   const icon = TOPIC_ICONS[topic.name] || '📌';
@@ -141,6 +151,11 @@ const TopicCard = ({ topic }) => {
         </p>
       )}
 
+      <Link to={`/problems?topic=${encodeURIComponent(topic.name)}`}
+        className="inline-flex mt-4 text-violet-400 hover:text-violet-300 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-400 rounded">
+        Practice this topic →
+      </Link>
+
     </div>
   );
 };
@@ -177,6 +192,8 @@ const Topics = () => {
     if (filter === 'notstarted') return t.total === 0;
     return true;
   });
+  const roadmapTopicNames = new Set(ROADMAP_STAGES.flatMap((stage) => stage.topics));
+  const uncategorizedTopics = filteredTopics.filter((topic) => !roadmapTopicNames.has(topic.name));
 
   const filterBtns = [
     { key: 'all',        label: 'All'          },
@@ -202,9 +219,9 @@ const Topics = () => {
 
       {/* Header */}
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-white">Topics</h2>
+        <h2 className="text-2xl font-bold text-white">DSA Roadmap</h2>
         <p className="text-gray-400 text-sm mt-1">
-          Track your progress across all DSA topics
+          A practical topic sequence with progress calculated from your tracked problems
         </p>
       </div>
 
@@ -214,7 +231,7 @@ const Topics = () => {
           <div>
             <h3 className="text-white font-semibold">Overall Progress</h3>
             <p className="text-gray-400 text-sm mt-0.5">
-              {totalSolved} of {totalProblems} problems solved
+              {totalSolved} of {totalProblems} tracked problems solved
             </p>
           </div>
           <span className="text-3xl font-bold text-violet-400">
@@ -263,17 +280,49 @@ const Topics = () => {
         ))}
       </div>
 
-      {/* Topic Grid */}
+      {/* Ordered roadmap stages */}
       {filteredTopics.length === 0 ? (
         <div className="text-center py-16">
           <p className="text-4xl mb-3">📭</p>
           <p className="text-gray-400">No topics match this filter</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredTopics.map((topic) => (
-            <TopicCard key={topic.name} topic={topic} />
-          ))}
+        <div className="space-y-7">
+          {ROADMAP_STAGES.map((stage) => {
+            const stageTopics = stage.topics
+              .map((name) => filteredTopics.find((topic) => topic.name === name))
+              .filter(Boolean);
+            if (!stageTopics.length) return null;
+            const stageTotal = stageTopics.reduce((sum, topic) => sum + topic.total, 0);
+            const stageSolved = stageTopics.reduce((sum, topic) => sum + topic.solved, 0);
+            const progress = stageTotal ? Math.round((stageSolved / stageTotal) * 100) : 0;
+            return (
+              <section key={stage.name} aria-labelledby={`roadmap-${stage.name.replace(/\W+/g, '-').toLowerCase()}`}>
+                <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
+                  <div>
+                    <h3 id={`roadmap-${stage.name.replace(/\W+/g, '-').toLowerCase()}`} className="text-white font-semibold">{stage.name}</h3>
+                    <p className="text-gray-500 text-xs mt-1">{stage.description}</p>
+                  </div>
+                  <span className="text-gray-400 text-xs">{stageSolved}/{stageTotal} tracked · {progress}%</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {stageTopics.map((topic) => <TopicCard key={topic.name} topic={topic} />)}
+                </div>
+              </section>
+            );
+          })}
+
+          {uncategorizedTopics.length > 0 && (
+            <section aria-labelledby="roadmap-other-topics">
+              <div className="mb-3">
+                <h3 id="roadmap-other-topics" className="text-white font-semibold">Needs topic review</h3>
+                <p className="text-gray-500 text-xs mt-1">Imported problems without reliable topic metadata.</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {uncategorizedTopics.map((topic) => <TopicCard key={topic.name} topic={topic} />)}
+              </div>
+            </section>
+          )}
         </div>
       )}
 

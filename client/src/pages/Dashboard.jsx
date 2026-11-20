@@ -1,11 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import DashboardLayout from '../components/layout/DashboardLayout';
 import StatCard from '../components/ui/StatCard';
 import ProgressBar from '../components/ui/ProgressBar';
-import { useAuth } from '../context/AuthContext';
+import ActivityHeatmap from '../components/dashboard/ActivityHeatmap';
+import { useAuth } from '../context/useAuth';
 import analyticsService from '../services/analyticsService';
 import revisionService from '../services/revisionService';
 import problemService from '../services/problemService';
+import topicService from '../services/topicService';
+import goalService from '../services/goalService';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import toast from 'react-hot-toast';
 
 const Dashboard = () => {
@@ -13,29 +18,57 @@ const Dashboard = () => {
   const [analytics, setAnalytics] = useState(null);
   const [revisions, setRevisions] = useState([]);
   const [recentProblems, setRecentProblems] = useState([]);
+  const [activities, setActivities] = useState([]);
+  const [topics, setTopics] = useState([]);
+  const [goals, setGoals] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     const fetchAll = async () => {
       try {
-        const [analyticsRes, revisionsRes, problemsRes] = await Promise.all([
+        setError(false);
+        const [analyticsRes, revisionsRes, problemsRes, heatmapRes, topicsRes, goalsRes] = await Promise.all([
           analyticsService.getAnalytics(),
           revisionService.getRevisions(),
           problemService.getProblems({ limit: 5 }),
+          analyticsService.getHeatmap(),
+          topicService.getTopics(),
+          goalService.getGoals(),
         ]);
         setAnalytics(analyticsRes.data);
         setRevisions(revisionsRes.data || []);
         setRecentProblems(problemsRes.data || []);
-      } catch (err) {
-        toast.error('Failed to load dashboard');
+        setActivities(heatmapRes.data || []);
+        setTopics(topicsRes.data || []);
+        setGoals(goalsRes.data || []);
+      } catch {
+        setError(true);
+        toast.error('Failed to load dashboard data');
       } finally {
         setLoading(false);
       }
     };
     fetchAll();
-  }, []);
+  }, [reloadKey]);
 
   const overview = analytics?.overview || {};
+  const weeklyActivity = useMemo(() => {
+    const counts = new Map(activities.map((item) => [String(item.date).slice(0, 10), item.problemsSolved || 0]));
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date();
+      date.setHours(0, 0, 0, 0);
+      date.setDate(date.getDate() - (6 - index));
+      const key = [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+      return { day: date.toLocaleDateString('en-IN', { weekday: 'short' }), Problems: counts.get(key) || 0 };
+    });
+  }, [activities]);
+  const topTopics = useMemo(() => topics
+    .filter((topic) => topic.total > 0)
+    .sort((a, b) => b.solved - a.solved || b.total - a.total)
+    .slice(0, 5), [topics]);
+  const dailyGoal = goals.find((goal) => goal.type === 'daily');
 
   const difficultyData = [
     { label: 'Easy',   value: overview.easyCount   || 0, color: 'bg-green-500',  text: 'text-green-400'  },
@@ -53,6 +86,21 @@ const Dashboard = () => {
     );
   }
 
+  if (error && !analytics) {
+    return (
+      <DashboardLayout title="Dashboard">
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 text-center">
+          <p className="text-white font-semibold">Dashboard data couldn’t load</p>
+          <p className="text-gray-400 text-sm mt-1">Check your connection and try again.</p>
+          <button onClick={() => { setLoading(true); setReloadKey((key) => key + 1); }}
+            className="mt-4 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm">
+            Retry
+          </button>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout title="Dashboard">
 
@@ -62,6 +110,11 @@ const Dashboard = () => {
           Welcome back, {user?.name?.split(' ')[0]} 👋
         </h2>
         <p className="text-gray-400 mt-1">Here's your progress summary</p>
+        {dailyGoal && (
+          <p className="text-gray-500 text-sm mt-2">
+            Daily goal: <span className="text-violet-300">{dailyGoal.achieved} / {dailyGoal.target}</span> problems
+          </p>
+        )}
       </div>
 
       {/* Stat Cards */}
@@ -107,8 +160,8 @@ const Dashboard = () => {
                   <span className="text-gray-400 text-sm">{d.value} solved</span>
                 </div>
                 <ProgressBar
-                  value={overview.totalProblems > 0
-                    ? (d.value / overview.totalProblems) * 100
+                  value={overview.solvedCount > 0
+                    ? (d.value / overview.solvedCount) * 100
                     : 0}
                   color={d.color}
                 />
@@ -159,25 +212,53 @@ const Dashboard = () => {
         {/* Topic Progress */}
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
           <h3 className="text-white font-semibold mb-4">Top Topics</h3>
-          {analytics?.byTopic?.length === 0 ? (
+          {topTopics.length === 0 ? (
             <div className="text-center py-8">
               <p className="text-3xl mb-2">📚</p>
               <p className="text-gray-400 text-sm">No problems added yet</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {(analytics?.byTopic || []).slice(0, 5).map((t) => (
-                <div key={t._id} className="flex items-center justify-between">
-                  <span className="text-gray-300 text-sm truncate flex-1">{t._id}</span>
-                  <span className="text-violet-400 text-sm font-semibold ml-2">
-                    {t.count}
-                  </span>
-                </div>
+              {topTopics.map((topic) => (
+                <Link key={topic.name} to={`/problems?topic=${encodeURIComponent(topic.name)}`}
+                  className="flex items-center justify-between gap-3 group">
+                  <span className="text-gray-300 text-sm truncate group-hover:text-white">{topic.name}</span>
+                  <span className="text-gray-500 text-xs flex-shrink-0">{topic.solved}/{topic.total}</span>
+                </Link>
               ))}
             </div>
           )}
+          <Link to="/topics" className="inline-flex mt-4 text-violet-400 hover:text-violet-300 text-xs font-medium">
+            Open DSA roadmap →
+          </Link>
         </div>
 
+      </div>
+
+      {/* Activity and weekly pace */}
+      <div className="grid grid-cols-1 xl:grid-cols-5 gap-4 mb-6">
+        <section className="xl:col-span-2 bg-gray-900 border border-gray-800 rounded-2xl p-5" aria-labelledby="weekly-activity-title">
+          <div className="mb-4">
+            <h3 id="weekly-activity-title" className="text-white font-semibold">This week</h3>
+            <p className="text-gray-500 text-xs mt-1">Problems solved each day</p>
+          </div>
+          {weeklyActivity.every((item) => item.Problems === 0) ? (
+            <div className="h-40 flex items-center justify-center text-gray-500 text-sm">Solve a problem to start your weekly activity.</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={160}>
+              <BarChart data={weeklyActivity}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                <XAxis dataKey="day" tick={{ fill: '#9ca3af', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis allowDecimals={false} width={24} tick={{ fill: '#6b7280', fontSize: 10 }} axisLine={false} tickLine={false} />
+                <Tooltip cursor={{ fill: '#1f2937' }} contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: 12 }} />
+                <Bar dataKey="Problems" fill="#8b5cf6" radius={[5, 5, 0, 0]} maxBarSize={28} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </section>
+        <div className="xl:col-span-3">
+          <ActivityHeatmap activities={activities} />
+        </div>
       </div>
 
       {/* Recent Problems */}

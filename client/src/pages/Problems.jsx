@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import DashboardLayout from '../components/layout/DashboardLayout';
 import Modal from '../components/ui/Modal';
 import ProblemForm from '../components/problems/ProblemForm';
@@ -24,11 +25,15 @@ const defaultFilters = {
 };
 
 const Problems = () => {
+  const [searchParams] = useSearchParams();
   const [problems, setProblems]         = useState([]);
   const [allProblems, setAllProblems]   = useState([]); // for platform counts
   const [loading, setLoading]           = useState(true);
   const [formLoading, setFormLoading]   = useState(false);
-  const [filters, setFilters]           = useState(defaultFilters);
+  const [filters, setFilters]           = useState(() => ({
+    ...defaultFilters,
+    topic: searchParams.get('topic') || '',
+  }));
   const [pagination, setPagination]     = useState({ page: 1, pages: 1, total: 0 });
   const [activePlatform, setActivePlatform] = useState('All');
 
@@ -40,7 +45,7 @@ const Problems = () => {
 
   // Fetch all problems once for platform counts
   useEffect(() => {
-    problemService.getProblems({ limit: 1000 }).then((res) => {
+    problemService.getAllProblems().then((res) => {
       setAllProblems(res.data || []);
     }).catch(() => {});
   }, []);
@@ -72,8 +77,6 @@ const Problems = () => {
     return acc;
   }, {});
 
-  const platforms = ['All', ...Object.keys(platformCounts).sort()];
-
   const handleAdd = async (data) => {
     setFormLoading(true);
     try {
@@ -82,7 +85,7 @@ const Problems = () => {
       setShowAddModal(false);
       fetchProblems(1);
       // Refresh counts
-      problemService.getProblems({ limit: 1000 }).then((res) => setAllProblems(res.data || []));
+      problemService.getAllProblems().then((res) => setAllProblems(res.data || []));
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to add problem');
     } finally {
@@ -536,7 +539,7 @@ const Problems = () => {
           onClose={() => setShowAutoModal(false)}
           onSaved={() => {
             fetchProblems(1);
-            problemService.getProblems({ limit: 1000 }).then((res) => setAllProblems(res.data || []));
+            problemService.getAllProblems().then((res) => setAllProblems(res.data || []));
           }}
         />
       </>
